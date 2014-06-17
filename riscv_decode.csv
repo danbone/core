@@ -1,0 +1,11 @@
+,,Execute ,,,,,,Branch,,,,Valid,,,
+OPCODE,,FUNCTION,Immediate_A,immediate_B,sel_A,sel_B,,FUNCTION,sel_op,Immediate,,rsj,rsk,rsd,Lockout
+IMM,,funct10 iff funct3 == SRL else funct3,X,I type immediate,register,immediate,,NOP,x,X,,1,0,1,1
+OP,,funct10,x,x,register,register,,NOP,x,X,,1,1,1,1
+BRANCH,,NOP,x,x,x,x,,funct3,PC,B type immediate,,1,1,0,0
+JAL,,ADD,PC,4,immediate,immediate,,JUMP,PC,J type immediate,,0,0,1,1
+JALR,,ADD,PC,4,immediate,immediate,,JUMP,register,I type immediate,,1,0,1,1
+AUIPC,,ADD,PC,U type immediate,immediate,immediate,,NOP,x,x,,0,0,1,1
+LUI,,ADD,0,U type immediate,immediate,immediate,,NOP,x,x,,0,0,1,1
+LOAD,,ADD,x,I type immediate,register,immediate,,NOP,x,x,,1,0,1,2
+STORE,,ADD,x,S type immediate,register,immediate,,NOP,x,x,,1,1,0,0
