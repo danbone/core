@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include <stdbool.h>
 
 #define OPCODE_IMM      0b0010011
 #define OPCODE_LUI      0b0110111
@@ -27,9 +28,9 @@
 #define FUNCT_BEQ_RAW   0b0000000000
 #define FUNCT_BNE_RAW   0b0000000001
 #define FUNCT_BLT_RAW   0b0000000100
-#define FUNCT_BGT_RAW   0b0000000101
-#define FUNCT_BTLU_RAW  0b0000000110
-#define FUNCT_BGTU_RAW  0b0000000111
+#define FUNCT_BGE_RAW   0b0000000101
+#define FUNCT_BLTU_RAW  0b0000000110
+#define FUNCT_BGEU_RAW  0b0000000111
 #define FUNCT_ADD_RAW   0b0000000000
 #define FUNCT_SUB_RAW   0b0100000000
 #define FUNCT_SLL_RAW   0b0000000001
@@ -41,21 +42,55 @@
 #define FUNCT_OR_RAW    0b0000000110
 #define FUNCT_AND_RAW   0b0000000111
 
-/*
+typedef enum {
+    ADDI,
+    ORI,
+    XORI,
+    ANDI,
+    SLTI,
+    SLTUI,
+    SLLI,
+    SRLI,
+    SRAI,
+    LUI,
+    AUIPC,
+    ADD,
+    SUB,
+    OR,
+    XOR,
+    AND,
+    SLT,
+    SLTU,
+    SLL,
+    SRL,
+    SRA,
+    JALR,
+    JAL,
+    SB,
+    SH,
+    SW,
+    LB,
+    LH,
+    LW,
+    LBU,
+    LHU,
+    BEQ,
+    BNE,
+    BLT,
+    BLTU,
+    BGE,
+    BGEU
+} instr_e;
+
 typedef struct {
-   uint32_t pc;
-   opcode_t opcode;
-   alu_op_t alu_op;
-   mem_op_t mem_op;
-   br_op_t br_op;
-   uint32_t sel_rsj;
-   uint32_t sel_rsj;
-   uint32_t sel_rsk;
-   uint32_t sel_rsd;
-   uint32_t immediate;
-   uint32_t result;
-} instruction_t;
-*/
+    uint32_t pc;
+    uint32_t    rsd;
+    uint32_t    rsj;
+    uint32_t    rsk;
+    uint32_t immediate;
+    instr_e  instruction;
+    char     instr_string[30];
+} instr_t;
 
 uint32_t sign_extend (uint32_t sign, uint32_t val, uint32_t width) {
     uint32_t i;
@@ -106,6 +141,48 @@ const char * REG2STRING (uint32_t val) {
       case 30: return "r30";
       case 31: return "r31";
    }
+}
+const char * INSTR2STRING (instr_e val) {
+    switch (val) {
+        case ADDI: return "ADDI"; 
+        case ORI: return "ORI"; 
+        case XORI: return "XORI"; 
+        case ANDI: return "ANDI"; 
+        case SLTI: return "SLTI"; 
+        case SLTUI: return "SLTUI"; 
+        case SLLI: return "SLLI"; 
+        case SRLI: return "SRLI"; 
+        case SRAI: return "SRAI"; 
+        case LUI: return "LUI"; 
+        case AUIPC: return "AUIPC"; 
+        case ADD: return "ADD"; 
+        case SUB: return "SUB"; 
+        case OR: return "OR"; 
+        case XOR: return "XOR"; 
+        case AND: return "AND"; 
+        case SLT: return "SLT"; 
+        case SLTU: return "SLTU"; 
+        case SLL: return "SLL"; 
+        case SRL: return "SRL"; 
+        case SRA: return "SRA"; 
+        case JALR: return "JALR"; 
+        case JAL: return "JAL"; 
+        case SB: return "SB"; 
+        case SH: return "SH"; 
+        case SW: return "SW"; 
+        case LB: return "LB"; 
+        case LH: return "LH"; 
+        case LW: return "LW"; 
+        case LBU: return "LBU"; 
+        case LHU: return "LHU"; 
+        case BEQ: return "BEQ"; 
+        case BNE: return "BNE"; 
+        case BLT: return "BLT"; 
+        case BLTU: return "BLTU"; 
+        case BGE: return "BGE"; 
+        case BGEU: return "BGEU"; 
+        default: exit(1);
+    }
 }
 
 uint32_t extract_immediate_type_I (uint32_t data) {
@@ -158,7 +235,232 @@ uint32_t extract_immediate_type_J (uint32_t data) {
    return ret;
 }
 
+void print_imm (instr_t * instr) {
+}
+void print_lui (instr_t * instr) {
+}
+void print_auipc (instr_t * instr) {
+}
+void print_op (instr_t * instr) {
+}
+void print_jalr (instr_t * instr) {
+   printf("%s %s, %s, %d\n", INSTR2STRING(instr->instruction), 
+                             REG2STRING(instr->rsd), 
+                             REG2STRING(instr->rsj), 
+                             instr->immediate);
+}
+void print_jal (instr_t * instr) {
+}
+void print_store (instr_t * instr) {
+}
+void print_load (instr_t * instr) {
+}
+void print_branch (instr_t * instr) {
+}
 
+
+//Opcodes:
+//OPCODE_IMM     
+//OPCODE_LUI     
+//OPCODE_AUIPC   
+//OPCODE_OP      
+//OPCODE_JAL     
+//OPCODE_JALR    
+//OPCODE_BRANCH  
+//OPCODE_LOAD    
+//OPCODE_STORE   
+//OPCODE_MISC_MEM
+//OPCODE_SYSTEM  
+
+bool decode_imm (uint32_t instr_in, instr_t * instr_out) {
+   uint32_t funct3;
+   uint32_t funct7;
+   uint32_t funct10;
+   bool     legal_instr = true;
+
+    //assert(instr_out != NULL) 
+
+   funct3        = extract_from_32b(instr_in, 14, 12);
+   funct7        = extract_from_32b(instr_in, 31, 25);
+   funct10       = (funct7 << 3) + funct3;
+   instr_out->rsd = extract_from_32b(instr_in, 11, 7);
+   instr_out->rsj = extract_from_32b(instr_in, 19, 15);
+   instr_out->immediate = extract_immediate_type_I(instr_in);
+
+   switch (funct3) {
+      case FUNCT_ADD_RAW:  instr_out->instruction = ADDI; break;
+      case FUNCT_OR_RAW:   instr_out->instruction = ORI; break;
+      case FUNCT_XOR_RAW:  instr_out->instruction = XORI; break;
+      case FUNCT_AND_RAW:  instr_out->instruction = ANDI; break;
+      case FUNCT_SLT_RAW:  instr_out->instruction = SLTI; break;
+      case FUNCT_SLTU_RAW: instr_out->instruction = SLTUI; break;
+      default: {
+         instr_out->immediate &= 0x1F;
+         switch (funct10) {
+            case FUNCT_SLL_RAW: instr_out->instruction = SLLI; break;
+            case FUNCT_SRL_RAW: instr_out->instruction = SRLI; break;
+            case FUNCT_SRA_RAW: instr_out->instruction = SRAI; break;
+            default: {
+                legal_instr = false;
+            }
+         }
+      }
+   }
+   return legal_instr;
+}
+
+bool decode_lui (uint32_t instr_in, instr_t * instr_out) {
+   bool     legal_instr = true;
+
+    //assert(instr_out != NULL) 
+   instr_out->immediate = extract_immediate_type_U(instr_in);
+   instr_out->rsd       = extract_from_32b(instr_in, 11, 7);
+   instr_out->instruction = LUI;
+
+   return legal_instr;
+}
+
+bool decode_auipc (uint32_t instr_in, instr_t * instr_out) {
+   bool     legal_instr = true;
+
+    //assert(instr_out != NULL) 
+   instr_out->immediate = extract_immediate_type_U(instr_in);
+   instr_out->rsd       = extract_from_32b(instr_in, 11, 7);
+   instr_out->instruction = AUIPC;
+
+   return legal_instr;
+}
+
+bool decode_op (uint32_t instr_in, instr_t * instr_out) {
+   uint32_t funct3;
+   uint32_t funct7;
+   uint32_t funct10;
+   bool     legal_instr = true;
+
+    //assert(instr_out != NULL) 
+
+   funct3        = extract_from_32b(instr_in, 14, 12);
+   funct7        = extract_from_32b(instr_in, 31, 25);
+   funct10       = (funct7 << 3) + funct3;
+
+   instr_out->rsd = extract_from_32b(instr_in, 11, 7);
+   instr_out->rsj = extract_from_32b(instr_in, 19, 15);
+   instr_out->rsk = extract_from_32b(instr_in, 24, 20);
+
+   switch (funct10) {
+      case FUNCT_ADD_RAW:  instr_out->instruction = ADD; break;
+      case FUNCT_SUB_RAW:  instr_out->instruction = SUB; break;
+      case FUNCT_OR_RAW:   instr_out->instruction = OR; break;
+      case FUNCT_XOR_RAW:  instr_out->instruction = XOR; break;
+      case FUNCT_AND_RAW:  instr_out->instruction = AND; break;
+      case FUNCT_SLT_RAW:  instr_out->instruction = SLT; break;
+      case FUNCT_SLTU_RAW: instr_out->instruction = SLTU; break;
+      case FUNCT_SLL_RAW:  instr_out->instruction = SLL; break;
+      case FUNCT_SRL_RAW:  instr_out->instruction = SRL; break;
+      case FUNCT_SRA_RAW:  instr_out->instruction = SRA; break;
+      default: {
+         legal_instr = false;
+      }
+   }
+   return legal_instr;
+}
+
+bool decode_jalr (uint32_t instr_in, instr_t * instr_out) {
+    bool legal_instr = true;
+    uint32_t funct3;
+
+    instr_out->immediate = extract_immediate_type_I(instr_in);
+    instr_out->rsd       = extract_from_32b(instr_in, 11, 7);
+    instr_out->rsj       = extract_from_32b(instr_in, 19, 15);
+    funct3              = extract_from_32b(instr_in, 14, 12);
+
+   switch (funct3) {
+      case FUNCT_JALR_RAW: instr_out->instruction = JALR; break;
+      default: {
+         legal_instr = false;
+      }
+   }
+   print_jalr(instr_out);
+   return legal_instr;
+}
+
+bool decode_jal (uint32_t instr_in, instr_t * instr_out) {
+    bool legal_instr = true;
+    instr_out->immediate = extract_immediate_type_J(instr_in);
+    instr_out->rsd       = extract_from_32b(instr_in, 11, 7);
+    instr_out->instruction = JAL;
+   return legal_instr;
+}
+
+bool decode_store (uint32_t instr_in, instr_t * instr_out) {
+    bool legal_instr = true;
+    uint32_t funct3;
+
+    funct3              = extract_from_32b(instr_in, 14, 12);
+    instr_out->immediate = extract_immediate_type_S(instr_in);
+    instr_out->rsd       = extract_from_32b(instr_in, 11, 7);
+    instr_out->rsj       = extract_from_32b(instr_in, 19, 15);
+    instr_out->rsk       = extract_from_32b(instr_in, 24, 20);
+
+   switch (funct3) {
+      case FUNCT_SB_RAW: instr_out->instruction = SB; break;
+      case FUNCT_SH_RAW: instr_out->instruction = SH; break;
+      case FUNCT_SW_RAW: instr_out->instruction = SW; break;
+      default: {
+         legal_instr = false;
+      }
+   }
+   return legal_instr;
+}
+
+bool decode_load (uint32_t instr_in, instr_t * instr_out) {
+    bool legal_instr = true;
+    uint32_t funct3;
+
+    funct3              = extract_from_32b(instr_in, 14, 12);
+    instr_out->immediate = extract_immediate_type_I(instr_in);
+    instr_out->rsj       = extract_from_32b(instr_in, 19, 15);
+    instr_out->rsk       = extract_from_32b(instr_in, 24, 20);
+
+   switch (funct3) {
+      case FUNCT_LB_RAW:  instr_out->instruction = LB; break;
+      case FUNCT_LH_RAW:  instr_out->instruction = LH; break;
+      case FUNCT_LW_RAW:  instr_out->instruction = LW; break;
+      case FUNCT_LBU_RAW: instr_out->instruction = LBU; break;
+      case FUNCT_LHU_RAW: instr_out->instruction = LHU; break;
+      default: {
+         legal_instr = false;
+      }
+   }
+   return legal_instr;
+}
+
+bool decode_branch (uint32_t instr_in, instr_t * instr_out) {
+    bool legal_instr = true;
+    uint32_t funct3;
+
+    funct3              = extract_from_32b(instr_in, 14, 12);
+    instr_out->immediate = extract_immediate_type_B(instr_in);
+    instr_out->rsj       = extract_from_32b(instr_in, 19, 15);
+    instr_out->rsk       = extract_from_32b(instr_in, 24, 20);
+
+   switch (funct3) {
+      case FUNCT_BEQ_RAW:   instr_out->instruction = BEQ; break;
+      case FUNCT_BNE_RAW:   instr_out->instruction = BNE; break;
+      case FUNCT_BLT_RAW:   instr_out->instruction = BLT; break;
+      case FUNCT_BLTU_RAW:  instr_out->instruction = BLTU; break;
+      case FUNCT_BGE_RAW:   instr_out->instruction = BGE; break;
+      case FUNCT_BGEU_RAW:  instr_out->instruction = BGEU; break;
+      default: {
+         legal_instr = false;
+      }
+   }
+   return legal_instr;
+}
+
+
+
+/*
 //Print instruction functions
 void print_jump_register_instruction (uint32_t instr) {
    uint32_t immediate;
@@ -464,6 +766,7 @@ void print_instruction (uint32_t instr) {
       break;
    }
 }
+*/
 
 uint32_t randomise_immediate_instr () {
    uint32_t dest_rand;
@@ -531,7 +834,7 @@ int main (char argc, char ** argv) {
    uint32_t instr;
    for (i = 0 ; i < 10; i++) {
       instr = randomise_immediate_instr();
-      print_instruction(instr);
+      //print_instruction(instr);
    }
    return 1;
 }
