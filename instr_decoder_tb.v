@@ -263,8 +263,8 @@ begin
 end
 endtask
 
-reg [31:0] instr; 
-integer instr_enum;
+reg [31:0]  instr; 
+integer     instr_enum;
 reg [4:0]   rsj, rsk, rsd;
 reg [31:0]  immediate;
 
@@ -275,8 +275,6 @@ initial begin
             instr, instr_enum, rsj, rsk, rsd, immediate);
     end
 end
-
-
 
 
 endmodule
