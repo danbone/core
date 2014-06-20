@@ -22,3 +22,11 @@
 `define MEM_SH       8'b01000000
 `define MEM_SW       8'b10000000
 
+`define LD_FUNCT_W  5
+`define LD_NOP      5'b00000000
+`define LD_LB       5'b00000001
+`define LD_LH       5'b00000010
+`define LD_LW       5'b00000100
+`define LD_LBU      5'b00001000
+`define LD_LBH      5'b00010000
+
