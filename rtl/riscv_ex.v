@@ -30,11 +30,14 @@ reg  [`MEM_FUNCT_W-1:0]  ex_mem_funct;
 reg  [31:0]              ex_mem_data;
 reg  [4:0]               ex_mem_wb_rsd;
 
+
 wire                     flip_op2;
 wire [31:0]              neg_op2;
 wire [5:0]               shft_amnt;
 
 wire [31:0]              op2;
+
+reg  [31:0]              result;
 
 assign neg_op2   = (~id_ex_op2) + 1;
 assign shft_amnt = id_ex_op2 & 'h1f;

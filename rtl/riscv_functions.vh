@@ -21,3 +21,4 @@
 `define MEM_SB       8'b00100000
 `define MEM_SH       8'b01000000
 `define MEM_SW       8'b10000000
+
