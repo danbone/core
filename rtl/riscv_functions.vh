@@ -17,7 +17,7 @@
 `define MEM_LH       8'b00000010
 `define MEM_LW       8'b00000100
 `define MEM_LBU      8'b00001000
-`define MEM_LBH      8'b00010000
+`define MEM_LHU      8'b00010000
 `define MEM_SB       8'b00100000
 `define MEM_SH       8'b01000000
 `define MEM_SW       8'b10000000
@@ -28,5 +28,5 @@
 `define LD_LH       5'b00000010
 `define LD_LW       5'b00000100
 `define LD_LBU      5'b00001000
-`define LD_LBH      5'b00010000
+`define LD_LHU      5'b00010000
 

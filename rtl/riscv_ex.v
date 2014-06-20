@@ -4,8 +4,8 @@ module riscv_ex (
     input                       clk,
     input                       rstn,
     //Downstream
-    input                       ds_rdy,
-    output                      ds_ack,
+    input                       id_ex_rdy,
+    output                      id_ex_ack,
     //ID input
     input  [`EX_FUNCT_W-1:0]    id_ex_funct,
     input  [31:0]               id_ex_op1,
@@ -14,8 +14,8 @@ module riscv_ex (
     input  [31:0]               id_ex_mem_data,
     input  [4:0]                id_ex_wb_rsd,
     //Upstream 
-    input                       us_rdy,
-    output                      us_ack,
+    output                       ex_mem_rdy,
+    input                        ex_mem_ack,
     //MEM output
     output [31:0]               ex_mem_result,
     output [`MEM_FUNCT_W-1:0]   ex_mem_funct,
@@ -24,7 +24,7 @@ module riscv_ex (
 );
 
 //Outputs
-reg                      us_rdy_reg;
+reg                      ex_mem_rdy_reg;
 reg  [31:0]              ex_mem_result;
 reg  [`MEM_FUNCT_W-1:0]  ex_mem_funct;
 reg  [31:0]              ex_mem_data;
@@ -45,8 +45,9 @@ assign op2       = (flip_op2) ? neg_op2 : id_ex_op2;
 
 always @ (*) begin
     case (id_ex_funct) 
-        `EX_ADD ,
-        `EX_SUB : result = id_ex_op1 + id_ex_op2;
+        //Hope these don't infer two adders
+        `EX_ADD : result = id_ex_op1 + id_ex_op2;
+        `EX_SUB : result = id_ex_op1 + neg_op2;
         `EX_OR  : result = id_ex_op1 | id_ex_op2;
         `EX_XOR : result = id_ex_op1 ^ id_ex_op2;
         `EX_AND : result = id_ex_op1 & id_ex_op2;
@@ -60,20 +61,20 @@ always @ (*) begin
 end
 
 //This module cannot stall
-assign ds_ack = us_rdy;
-assign us_rdy = us_rdy_reg;
+assign id_ex_ack = ex_mem_rdy;
+assign ex_mem_rdy = ex_mem_rdy_reg;
 
 always @ (posedge clk, negedge rstn) begin
     if (~rstn) begin
-        us_rdy_reg     <= 1'b0;
+        ex_mem_rdy_reg     <= 1'b0;
         ex_mem_result  <= 'h0;
         ex_mem_funct   <= `MEM_NOP;
         ex_mem_data    <= 'h0;
         ex_mem_wb_rsd  <= 'h0;
     end
     else begin
-        if (us_rdy_reg && us_ack) begin
-            us_rdy_reg     <= ds_rdy;
+        if (ex_mem_rdy_reg && ex_mem_ack) begin
+            ex_mem_rdy_reg     <= id_ex_rdy;
             ex_mem_result  <= result;
             ex_mem_funct   <= id_ex_mem_funct;
             ex_mem_data    <= id_ex_mem_data;
