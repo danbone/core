@@ -164,13 +164,16 @@ always @ (*) begin
             LOAD_OP: begin 
                 mem_address = id_ex_op1 + id_ex_op2;
                 //Check address alignment
-                if ((id_ex_mem_funct == `MEM_LH || id_ex_mem_funct == `MEM_LHU) && mem_address[0]) begin
-                    $display("STIM ERROR: Misaligned memory address for half word load : %x", 
+                if ((id_ex_mem_funct == `MEM_LH || id_ex_mem_funct == `MEM_LHU) && 
+                        mem_address[0]) begin
+                    $display(
+                        "STIM ERROR Misaligned memory address for half word load: %x", 
                         mem_address);
                     $finish;
                 end
                 else if (id_ex_mem_funct == `MEM_LW && |(mem_address[1:0])) begin
-                    $display("STIM ERROR: Misaligned memory address for word load : %x", 
+                    $display("
+                        STIM ERROR Misaligned memory address for word load: %x", 
                         mem_address);
                     $finish;
                 end
@@ -206,12 +209,14 @@ always @ (*) begin
                 mem_address = id_ex_op1 + id_ex_op2;
                 //Check address alignment
                 if (id_ex_mem_funct == `MEM_SH || && mem_address[0]) begin
-                    $display("STIM ERROR: Misaligned memory address for half word store : %x", 
+                    $display(
+                        "STIM ERROR Misaligned memory address for half word store: %x",
                         mem_address);
                     $finish;
                 end
                 else if (id_ex_mem_funct == `MEM_SW && |(mem_address[1:0])) begin
-                    $display("STIM ERROR: Misaligned memory address for word store : %x", 
+                    $display(
+                        "STIM ERROR Misaligned memory address for word store: %x", 
                         mem_address);
                 $finish;
                 end
@@ -221,7 +226,8 @@ always @ (*) begin
                     //STORE WORD
                     default: store_wmask = 'hF; store_data = id_ex_mem_data;
                 endcase
-                store_check_fifo_data_in = {(store_wmask << mem_address[1:0]), store_data, alu_result};
+                store_check_fifo_data_in = {(store_wmask << mem_address[1:0]), 
+                                                store_data, mem_address};
                 store_check_fifo_push    = 1'b1;
             end
             //Illegal input
@@ -245,17 +251,104 @@ always @ (posedge clk, negedge rstn) begin
     if (~rstn) begin
         data_bif_rdata <= 32'h0;
         data_bif_ack <= 1'b0;
+        data_bif_rvalid <= 1'b0;
         next_load_fifo_pop <= 1'b0;
     end
     else begin
+        data_bif_ack <= 1'b1;
         if (data_bif_req && data_bif_rnw) begin
-            data_bif_rdata <= next_load_fifo_data_out;
+            data_bif_rdata     <= next_load_fifo_data_out;
+            data_bif_rvalid    <= 1'b1;
             next_load_fifo_pop <= 1'b1;
-            data_bif_ack       <= 1'b1;
         end
         else begin
-            data_bif_ack <= 1'b0;
+            data_bif_rvalid <= 1'b0; 
             next_load_fifo_pop <= 1'b0;
+        end
+    end
+end
+
+reg check_load;
+reg check_store;
+reg check_reg;
+
+//Data bif checker
+always @ (*) begin
+    check_load  = 1'b0;
+    check_store = 1'b0;
+    check_reg   = 1'b0;
+    if (data_bif_req && data_bif_ack) begin
+        if (data_bif_rnw) begin
+            check_load = 1'b1;
+            load_check_fifo_pop = 1'b1;
+            sim_load_addr = load_check_fifo_data_out;
+            rtl_load_addr = data_bif_addr;
+        end
+        else begin
+            check_store = 1'b1;
+            store_check_fifo_pop 1'b1;
+            sim_store_addr  = store_check_fifo_data_out[31:0];
+            sim_store_wdata = store_check_fifo_data_out[63:32];
+            sim_store_wmask = store_check_fifo_data_out[67:64];
+            rtl_store_addr  = data_bif_addr;
+            rtl_store_wdata = data_bif_wdata;
+            rtl_store_wmask = data_bif_wmask;
+        end
+    end
+    if (wb_rf_write) begin
+        check_reg = 1'b1;
+        sim_reg_wdata = reg_check_fifo_data_out[31:0];
+        sim_reg_rsd   = reg_check_fifo_data_out[36:32];
+        rtl_reg_wdata = wb_rf_data;
+        rtl_reg_rsd   = wb_rf_rsd;
+    end
+end
+
+reg mismatch_load;
+reg mismatch_store;
+reg mismatch_reg;
+
+always @ (posedge clk) begin
+    if (~rstn) begin
+        mismatch_load  = 1'b0;
+        mismatch_store = 1'b0;
+        mismatch_reg   = 1'b0;
+    end
+    else begin
+        if (check_load) begin
+            if (sim_load_addr != rtl_load_addr) begin
+                mismatch_load = 1'b1;
+                $display("sim_load_addr != rtl_load_addr : %x != %x", 
+                    sim_load_addr, rtl_load_addr);
+            end
+        end
+        else if (check_store) begin
+            if (    sim_store_wmask != rtl_store_wmask ||
+                    sim_store_wdata != rtl_store_wdata ||
+                    sim_store_addr  != rtl_store_addr    ) begin
+                mismatch_store = 1'b1;
+                $display("sim_store_wmask != rtl_store_wmask : %x != %x", 
+                    sim_store_wmask, rtl_store_wmask);
+                $display("sim_store_wdata != rtl_store_wdata : %x != %x", 
+                    sim_store_wdata, rtl_store_wdata);
+                $display("sim_store_addr  != rtl_store_addr : %x != %x", 
+                    sim_store_addr, rtl_store_addr); 
+            end
+        end
+        else if (check_reg) begin
+            if (     sim_reg_wdata != rtl_reg_wdata ||
+                     sim_reg_rsd   != rtl_reg_rsd     ) begin
+                mismatch_reg = 1'b1;
+                $display("sim_reg_wdata != rtl_reg_wdata : %x != %x", 
+                    sim_reg_wdata, rtl_reg_wdata);
+                $display("sim_reg_rsd   != rtl_reg_rsd : %x != %x", 
+                    sim_reg_rsd, rtl_reg_rsd);  
+             end
+        end
+        if (mismatch_load || mismatch_store || mismatch_reg) begin
+            $display("ERROR: mismatches load (%0b) store (%0b) reg (%0b)", 
+                mismatch_load, mismatch_store, mismatch_reg);
+            $finish;
         end
     end
 end
@@ -287,6 +380,7 @@ riscv_ex_pipe_tb i_riscv_ex_pipe_tb (
     output [31:0]              data_bif_addr,
     output                     data_bif_req,
     output                     data_bif_rnw,
+    input                      data_bif_rvalid,
     output [3:0]               data_bif_wmask,
     output [31:0]              data_bif_wdata,
     output [31:0]              wb_rf_data,

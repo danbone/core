@@ -23,10 +23,10 @@
 `define MEM_SW       8'b10000000
 
 `define LD_FUNCT_W  5
-`define LD_NOP      5'b00000000
-`define LD_LB       5'b00000001
-`define LD_LH       5'b00000010
-`define LD_LW       5'b00000100
-`define LD_LBU      5'b00001000
-`define LD_LHU      5'b00010000
+`define LD_NOP      5'b00000
+`define LD_LB       5'b00001
+`define LD_LH       5'b00010
+`define LD_LW       5'b00100
+`define LD_LBU      5'b01000
+`define LD_LHU      5'b10000
 
