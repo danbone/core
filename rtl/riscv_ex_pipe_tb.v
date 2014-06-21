@@ -1,4 +1,9 @@
+`include "riscv_functions.vh"
+
 module riscv_ex_pipe_tb ();
+
+localparam NUM_INSTRUCTIONS = 10;
+localparam LOCKUP_COUNT = 100;
 localparam ALU_OP   = 'h0;
 localparam LOAD_OP  = 'h1;
 localparam STORE_OP = 'h2;
@@ -10,7 +15,6 @@ localparam NUM_STORE_FUCNTS = 3;
 reg                       clk;
 reg                       rstn;
 reg [1:0]                 operation;
-
 
 reg [`EX_FUNCT_W-1:0]     alu_functions   [0:NUM_ALU_FUNCTS-1];
 reg [`MEM_FUNCT_W-1:0]    load_functions  [0:NUM_LOAD_FUNCTS-1];
@@ -127,17 +131,144 @@ begin
 end
 endtask
 
+always @ (posedge clk) begin
+    if (~rstn) begin
+        //Reset inputs
+        id_ex_rdy       <= 'h0;
+        id_ex_funct     <= 'h0;
+        id_ex_op1       <= 'h0;
+        id_ex_op2       <= 'h0;
+        id_ex_mem_funct <= 'h0;
+        id_ex_mem_data  <= 'h0;
+        id_ex_wb_rsd    <= 'h0;
+        //Simulation controls
+        stall_count     <= 0;
+    end
+    else begin
+        if (id_ex_rdy) begin
+            stall_count <= 0;
+            if (instruction_count < NUM_INSTRUCTIONS) begin
+                instruction_count <= instruction_count + 1;
+                stim_generation();
+            end
+            else begin 
+                stim_finished <= 1'b1;
+            end
+        end
+        else begin
+            stall_count <= stall_count + 1;
+        end
+    end
+end
+
+always @ (*) begin
+    if (stall_count >= LOCKUP_COUNT) begin
+        $display("FAIL: Lock up detected");
+        $finish;
+    end
+end
+
+initial begin
+    @ (stim_finished && reg_check_fifo_empty && load_check_fifo_empty && 
+            store_check_fifo_empty);
+    $display("PASS: Simulation finished");
+    $finish;
+end
+
 wire [31:0] alu_result;
 wire [31:0] load_data;
 wire [31:0] store_data;
 
+wire        reg_check_fifo_empty;
+wire        load_check_fifo_empty;
+wire        store_check_fifo_empty;
+
+//Checks register writes
+riscv_fifo #( 
+        .DEPTH             (5),
+        .DATA_W            (32 + 5),
+        .ASSERT_OVERFLOW   (1),
+        .ASSERT_UNDERFLOW  (1),
+        .ENABLE_BYPASS     (0)
+    )
+    reg_check_fifo (
+        .clk                (clk),
+        .rstn               (rstn),
+        .fifo_data_in       (reg_check_fifo_data_in),
+        .fifo_push          (reg_check_fifo_push),
+        .fifo_data_out      (reg_check_fifo_data_out),
+        .fifo_pop           (check_reg),
+        //.fifo_full          (),
+        .fifo_empty         (reg_check_fifo_empty),
+        .fifo_flush         (1'b0)
+);
+
+//Checks load addresses
+riscv_fifo #( 
+        .DEPTH             (5),
+        .DATA_W            (32),
+        .ASSERT_OVERFLOW   (1),
+        .ASSERT_UNDERFLOW  (1),
+        .ENABLE_BYPASS     (0)
+    )
+    load_check_fifo (
+        .clk                (clk),
+        .rstn               (rstn),
+        .fifo_data_in       (load_check_fifo_data_in),
+        .fifo_push          (load_check_fifo_push),
+        .fifo_data_out      (load_check_fifo_data_out),
+        .fifo_pop           (check_reg),
+        //.fifo_full          (),
+        .fifo_empty         (load_check_fifo_empty),
+        .fifo_flush         (1'b0)
+);
+
+//Store check fifo
+riscv_fifo #( 
+        .DEPTH             (5),
+        .DATA_W            (4+32+32),
+        .ASSERT_OVERFLOW   (1),
+        .ASSERT_UNDERFLOW  (1),
+        .ENABLE_BYPASS     (0)
+    )
+    store_check_fifo (
+        .clk                (clk),
+        .rstn               (rstn),
+        .fifo_data_in       (store_check_fifo_data_in),
+        .fifo_push          (store_check_fifo_push),
+        .fifo_data_out      (store_check_fifo_data_out),
+        .fifo_pop           (check_reg),
+        //.fifo_full          (),
+        .fifo_empty         (store_check_fifo_empty),
+        .fifo_flush         (1'b0)
+);
+
+//Next load data, holds rdata for pending loads
+riscv_fifo #( 
+        .DEPTH             (5),
+        .DATA_W            (32),
+        .ASSERT_OVERFLOW   (1),
+        .ASSERT_UNDERFLOW  (1),
+        .ENABLE_BYPASS     (0)
+    )
+    next_load_fifo (
+        .clk                (clk),
+        .rstn               (rstn),
+        .fifo_data_in       (next_load_fifo_data_in),
+        .fifo_push          (next_load_fifo_push),
+        .fifo_data_out      (next_load_fifo_data_out),
+        .fifo_pop           (next_load_fifo_pop),
+        //.fifo_full          (),
+        //.fifo_empty         (),
+        .fifo_flush         (1'b0)
+);
 
 always @ (*) begin
     //Default assignments
     reg_check_fifo_push      = 1'b0;
     load_check_fifo_push     = 1'b0;
     store_check_fifo_push    = 1'b0;
-    next_load_check_fifo_pop = 1'b0;
+    next_load_fifo_push      = 1'b0;
     //Modeling logic
     if (id_ex_rdy && id_ex_ack) begin
         case (operation) 
@@ -163,6 +294,7 @@ always @ (*) begin
             //LOAD_OP
             LOAD_OP: begin 
                 mem_address = id_ex_op1 + id_ex_op2;
+                next_load_data = $urandom();
                 //Check address alignment
                 if ((id_ex_mem_funct == `MEM_LH || id_ex_mem_funct == `MEM_LHU) && 
                         mem_address[0]) begin
@@ -180,12 +312,12 @@ always @ (*) begin
                 //Figure out rdata
                 case (id_ex_mem_funct) 
                     `MEM_LB, 
-                    `MEM_LBU : load_data = (next_load_check_fifo_data_out 
+                    `MEM_LBU : load_data = (next_load_data 
                                             >> (8*mem_address[1:0])) & 'hf;
                     `MEM_LH, 
-                    `MEM_LHU : load_data = (next_load_check_fifo_data_out 
+                    `MEM_LHU : load_data = (next_load_data 
                                             >> (8*mem_address[1:0])) & 'hff;
-                    `MEM_LW  : load_data = next_load_check_fifo_data_out;
+                    `MEM_LW  : load_data = next_load_data;
                 endcase
                 //Store expected write data
                 reg_check_fifo_push     = 1'b1;
@@ -199,7 +331,8 @@ always @ (*) begin
                 else begin
                     reg_check_fifo_data_in  = load_data;
                 end
-                next_load_check_fifo_pop = 1'b1;
+                next_load_fifo_data_in = next_load_data;
+                next_load_fifo_push    = 1'b1;
                 //Store expected load address
                 load_check_fifo_data_in = {mem_address[31:2], 2'b0};
                 load_check_fifo_push    = 1'b1;
@@ -249,20 +382,20 @@ end
 //BIF BFM
 always @ (posedge clk, negedge rstn) begin
     if (~rstn) begin
-        data_bif_rdata <= 32'h0;
-        data_bif_ack <= 1'b0;
-        data_bif_rvalid <= 1'b0;
-        next_load_fifo_pop <= 1'b0;
+        data_bif_rdata      <= 32'h0;
+        data_bif_ack        <= 1'b0;
+        data_bif_rvalid     <= 1'b0;
+        next_load_fifo_pop  <= 1'b0;
     end
     else begin
-        data_bif_ack <= 1'b1;
+        data_bif_ack        <= 1'b1;
         if (data_bif_req && data_bif_rnw) begin
             data_bif_rdata     <= next_load_fifo_data_out;
             data_bif_rvalid    <= 1'b1;
             next_load_fifo_pop <= 1'b1;
         end
         else begin
-            data_bif_rvalid <= 1'b0; 
+            data_bif_rvalid    <= 1'b0; 
             next_load_fifo_pop <= 1'b0;
         end
     end
@@ -272,7 +405,7 @@ reg check_load;
 reg check_store;
 reg check_reg;
 
-//Data bif checker
+//Checker comb
 always @ (*) begin
     check_load  = 1'b0;
     check_store = 1'b0;
@@ -308,6 +441,7 @@ reg mismatch_load;
 reg mismatch_store;
 reg mismatch_reg;
 
+//Checker 
 always @ (posedge clk) begin
     if (~rstn) begin
         mismatch_load  = 1'b0;
@@ -353,18 +487,7 @@ always @ (posedge clk) begin
     end
 end
 
-
-id_ex_rdy,
-id_ex_funct,
-id_ex_op1,
-id_ex_op2,
-id_ex_mem_funct,
-id_ex_mem_data,
-id_ex_wb_rsd,
-
-
-
-
+//DUT
 riscv_ex_pipe_tb i_riscv_ex_pipe_tb (
     input                      clk,
     input                      rstn,
