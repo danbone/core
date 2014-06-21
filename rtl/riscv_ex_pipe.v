@@ -1,5 +1,5 @@
 `include "riscv_functions.vh"
-module riscv_ex_pipe_tb (
+module riscv_ex_pipe (
     input                      clk,
     input                      rstn,
     input                      id_ex_rdy,
@@ -34,7 +34,6 @@ module riscv_ex_pipe_tb (
     wire  [1:0]                mem_wb_baddr;
     wire  [31:0]               mem_wb_data;
     wire  [4:0]                mem_wb_rsd;
-    wire  [4:0]                mem_wb_rsd;
 
 riscv_ex i_riscv_ex (
     .clk                (clk),
@@ -63,7 +62,7 @@ riscv_mem i_riscv_mem (
     .ex_mem_result      (ex_mem_result),
     .ex_mem_funct       (ex_mem_funct),
     .ex_mem_data        (ex_mem_data),
-    .ex_mem_wb_rsd      (ex_mem_wb_rsd)
+    .ex_mem_wb_rsd      (ex_mem_wb_rsd),
     .mem_wb_rdy         (mem_wb_rdy),
     .mem_wb_ack         (mem_wb_ack),
     .data_bif_addr      (data_bif_addr),

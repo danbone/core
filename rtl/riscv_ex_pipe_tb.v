@@ -10,7 +10,12 @@ localparam STORE_OP = 'h2;
 
 localparam NUM_ALU_FUNCTS   = 10;
 localparam NUM_LOAD_FUNCTS  = 5;
-localparam NUM_STORE_FUCNTS = 3;
+localparam NUM_STORE_FUNCTS = 3;
+
+localparam REG_CHECK_FIFO_W   = 32 + 5;
+localparam LOAD_CHECK_FIFO_W  = 32;
+localparam STORE_CHECK_FIFO_W = 4+32+32;
+localparam NEXT_LOAD_FIFO_W   = 32;
 
 reg                       clk;
 reg                       rstn;
@@ -19,6 +24,40 @@ reg [1:0]                 operation;
 reg [`EX_FUNCT_W-1:0]     alu_functions   [0:NUM_ALU_FUNCTS-1];
 reg [`MEM_FUNCT_W-1:0]    load_functions  [0:NUM_LOAD_FUNCTS-1];
 reg [`MEM_FUNCT_W-1:0]    store_functions [0:NUM_STORE_FUNCTS-1];
+
+reg                      id_ex_rdy;
+reg  [`EX_FUNCT_W-1:0]   id_ex_funct;
+reg  [31:0]              id_ex_op1;
+reg  [31:0]              id_ex_op2;
+reg  [`MEM_FUNCT_W-1:0]  id_ex_mem_funct;
+reg  [31:0]              id_ex_mem_data;
+reg  [4:0]               id_ex_wb_rsd;
+reg  [31:0]              data_bif_rdata;
+reg                      data_bif_ack;
+
+wire [31:0] alu_result;
+wire [31:0] load_data;
+wire [31:0] store_data;
+
+wire        reg_check_fifo_empty;
+wire        load_check_fifo_empty;
+wire        store_check_fifo_empty;
+
+reg  [REG_CHECK_FIFO_W-1:0]     reg_check_fifo_data_in;
+reg                             reg_check_fifo_push;
+wire [REG_CHECK_FIFO_W-1:0]     reg_check_fifo_data_in;
+
+reg  [LOAD_CHECK_FIFO_W-1:0]    load_check_fifo_data_in;
+reg                             load_check_fifo_push;
+wire [LOAD_CHECK_FIFO_W-1:0]    load_check_fifo_data_in;
+
+reg  [STORE_CHECK_FIFO_W-1:0]   store_check_fifo_data_in;
+reg                             store_check_fifo_push;
+wire [STORE_CHECK_FIFO_W-1:0]   store_check_fifo_data_in;
+
+reg  [NEXT_LOAD_FIFO_W-1:0]     next_load_fifo_data_in;
+reg                             next_load_fifo_push;
+wire [NEXT_LOAD_FIFO_W-1:0]     next_load_fifo_data_in;
 
 always clk = #5 ~clk;
 
@@ -53,31 +92,31 @@ initial begin
     store_functions[2] = `MEM_SW;
 end
 
-function [`EX_FUNCT_W-1:0] generate_alu_function();
+task generate_alu_function (output [`EX_FUNCT_W-1:0] funct);
 integer rand_var;
 begin
     rand_var = $urandom % NUM_ALU_FUNCTS;
-    return alu_functions[rand_var];
+    funct = alu_functions[rand_var];
 end
-endfunction
+endtask
 
-function [`MEM_FUNCT_W-1:0] generate_load_function();
+task generate_load_function (output [`MEM_FUNCT_W-1:0] funct);
 integer rand_var;
 begin
     rand_var = $urandom % NUM_LOAD_FUNCTS;
-    return load_functions[rand_var];
+    funct = load_functions[rand_var];
 end
-endfunction
+endtask
 
-function [`MEM_FUNCT_W-1:0] generate_load_function();
+task generate_store_function (output [`MEM_FUNCT_W-1:0] funct);
 integer rand_var;
 begin
     rand_var = $urandom % NUM_STORE_FUNCTS;
-    return store_functions[rand_var];
+    funct = store_functions[rand_var];
 end
-endfunction
+endtask
 
-task stim_generation ();
+task stim_generation;
 begin
     //ALU or MEM instruction
     id_ex_mem_data = $urandom;
@@ -85,7 +124,7 @@ begin
     operation      = $urandom % 3;
     case (operation) 
         ALU_OP: begin
-            id_ex_funct = generate_alu_function();
+            generate_alu_function(id_ex_funct);
             id_ex_op2 = $urandom;
             if (    id_ex_funct == `EX_SLL || 
                     id_ex_funct == `EX_SRL || 
@@ -98,7 +137,7 @@ begin
             id_ex_mem_funct = `MEM_NOP;
         end
         LOAD_OP: begin
-            id_ex_mem_funct = generate_load_function();
+            generate_load_function(id_ex_mem_funct);
             id_ex_funct = `EX_ADD;
             id_ex_op1 = $urandom;
             id_ex_op2 = $urandom;
@@ -113,7 +152,7 @@ begin
             end
         end
         STORE_OP: begin
-            id_ex_mem_funct = generate_store_function();
+            generate_store_function(id_ex_mem_funct);
             id_ex_funct = `EX_ADD;
             id_ex_op1 = $urandom;
             id_ex_op2 = $urandom;
@@ -175,13 +214,6 @@ initial begin
     $finish;
 end
 
-wire [31:0] alu_result;
-wire [31:0] load_data;
-wire [31:0] store_data;
-
-wire        reg_check_fifo_empty;
-wire        load_check_fifo_empty;
-wire        store_check_fifo_empty;
 
 //Checks register writes
 riscv_fifo #( 
@@ -237,7 +269,7 @@ riscv_fifo #(
         .fifo_data_in       (store_check_fifo_data_in),
         .fifo_push          (store_check_fifo_push),
         .fifo_data_out      (store_check_fifo_data_out),
-        .fifo_pop           (check_reg),
+        .fifo_pop           (check_store),
         //.fifo_full          (),
         .fifo_empty         (store_check_fifo_empty),
         .fifo_flush         (1'b0)
@@ -294,7 +326,7 @@ always @ (*) begin
             //LOAD_OP
             LOAD_OP: begin 
                 mem_address = id_ex_op1 + id_ex_op2;
-                next_load_data = $urandom();
+                next_load_data = $urandom;
                 //Check address alignment
                 if ((id_ex_mem_funct == `MEM_LH || id_ex_mem_funct == `MEM_LHU) && 
                         mem_address[0]) begin
@@ -304,8 +336,8 @@ always @ (*) begin
                     $finish;
                 end
                 else if (id_ex_mem_funct == `MEM_LW && |(mem_address[1:0])) begin
-                    $display("
-                        STIM ERROR Misaligned memory address for word load: %x", 
+                    $display(
+                        "STIM ERROR Misaligned memory address for word load: %x", 
                         mem_address);
                     $finish;
                 end
@@ -341,7 +373,7 @@ always @ (*) begin
             STORE_OP: begin
                 mem_address = id_ex_op1 + id_ex_op2;
                 //Check address alignment
-                if (id_ex_mem_funct == `MEM_SH || && mem_address[0]) begin
+                if (id_ex_mem_funct == `MEM_SH && mem_address[0]) begin
                     $display(
                         "STIM ERROR Misaligned memory address for half word store: %x",
                         mem_address);
@@ -354,10 +386,19 @@ always @ (*) begin
                 $finish;
                 end
                 case (id_ex_mem_funct) 
-                    `MEM_SB: store_wmask = 'h1; store_data = {4{id_ex_mem_data[7:0]}};
-                    `MEM_SH: store_wmask = 'h3; store_data = {2{id_ex_mem_data[15:0]}};
+                    `MEM_SB: begin 
+                        store_wmask = 'h1; 
+                        store_data = {4{id_ex_mem_data[7:0]}};
+                    end
+                    `MEM_SH: begin
+                        store_wmask = 'h3; 
+                        store_data = {2{id_ex_mem_data[15:0]}};
+                    end
                     //STORE WORD
-                    default: store_wmask = 'hF; store_data = id_ex_mem_data;
+                    default: begin
+                        store_wmask = 'hF; 
+                        store_data = id_ex_mem_data;
+                    end
                 endcase
                 store_check_fifo_data_in = {(store_wmask << mem_address[1:0]), 
                                                 store_data, mem_address};
@@ -419,7 +460,7 @@ always @ (*) begin
         end
         else begin
             check_store = 1'b1;
-            store_check_fifo_pop 1'b1;
+            store_check_fifo_pop = 1'b1;
             sim_store_addr  = store_check_fifo_data_out[31:0];
             sim_store_wdata = store_check_fifo_data_out[63:32];
             sim_store_wmask = store_check_fifo_data_out[67:64];
@@ -488,27 +529,27 @@ always @ (posedge clk) begin
 end
 
 //DUT
-riscv_ex_pipe_tb i_riscv_ex_pipe_tb (
-    input                      clk,
-    input                      rstn,
-    input                      id_ex_rdy,
-    input  [`EX_FUNCT_W-1:0]   id_ex_funct,
-    input  [31:0]              id_ex_op1,
-    input  [31:0]              id_ex_op2,
-    input  [`MEM_FUNCT_W-1:0]  id_ex_mem_funct,
-    input  [31:0]              id_ex_mem_data,
-    input  [4:0]               id_ex_wb_rsd,
-    input  [31:0]              data_bif_rdata,
-    input                      data_bif_ack,
-    output [31:0]              data_bif_addr,
-    output                     data_bif_req,
-    output                     data_bif_rnw,
-    input                      data_bif_rvalid,
-    output [3:0]               data_bif_wmask,
-    output [31:0]              data_bif_wdata,
-    output [31:0]              wb_rf_data,
-    output [4:0]               wb_rf_rsd,
-    output                     wb_rf_write
+riscv_ex_pipe i_riscv_ex_pipe (
+    .clk             (clk),
+    .rstn            (rstn),
+    .id_ex_rdy       (id_ex_rdy),
+    .id_ex_funct     (id_ex_funct),
+    .id_ex_op1       (id_ex_op1),
+    .id_ex_op2       (id_ex_op2),
+    .id_ex_mem_funct (id_ex_mem_funct),
+    .id_ex_mem_data  (id_ex_mem_data),
+    .id_ex_wb_rsd    (id_ex_wb_rsd),
+    .data_bif_rdata  (data_bif_rdata),
+    .data_bif_ack    (data_bif_ack),
+    .data_bif_addr   (data_bif_addr),
+    .data_bif_req    (data_bif_req),
+    .data_bif_rnw    (data_bif_rnw),
+    .data_bif_rvalid (data_bif_rvalid),
+    .data_bif_wmask  (data_bif_wmask),
+    .data_bif_wdata  (data_bif_wdata),
+    .wb_rf_data      (wb_rf_data),
+    .wb_rf_rsd       (wb_rf_rsd),
+    .wb_rf_write     (wb_rf_write)
 );
 
 endmodule
