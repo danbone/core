@@ -154,6 +154,14 @@ always @ (*) begin
     endcase
 end
 
+/* TODO
+ * Assign LOAD/STORE funct
+ * Assign BRANCH funct
+ * Drive branch target out
+ * Hazard logic
+ * Stall back logic
+ * Cache tag compare
+ */
 
 
 endmodule
