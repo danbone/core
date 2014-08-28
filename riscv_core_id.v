@@ -33,6 +33,18 @@ localparam OPCODE_STORE     = 6'b0100011;
 localparam OPCODE_MISC_MEM  = 6'b0001111;
 localparam OPCODE_SYSTEM    = 6'b1110011;
 
+localparam FUNCT_ADD_RAW    = 10'b0000000000;
+localparam FUNCT_SUB_RAW    = 10'b0100000000;
+localparam FUNCT_OR_RAW     = 10'b0000000110;
+localparam FUNCT_XOR_RAW    = 10'b0000000100;
+localparam FUNCT_AND_RAW    = 10'b0000000111;
+localparam FUNCT_SLT_RAW    = 10'b0000000010;
+localparam FUNCT_SLTU_RAW   = 10'b0000000011;
+localparam FUNCT_SLL_RAW    = 10'b0000000001;
+localparam FUNCT_SRL_RAW    = 10'b0000000101;
+localparam FUNCT_SRA_RAW    = 10'b0100000101;
+
+localparam FUNCT_NOP_OH     = 10'b0000000000;
 localparam FUNCT_ADD_OH     = 10'b0000000001;
 localparam FUNCT_SUB_OH     = 10'b0000000010;
 localparam FUNCT_OR_OH      = 10'b0000000100;
@@ -44,16 +56,42 @@ localparam FUNCT_SLL_OH     = 10'b0010000000;
 localparam FUNCT_SRL_OH     = 10'b0100000000;
 localparam FUNCT_SRA_OH     = 10'b1000000000;
 
-localparam FUNCT_ADD_RAW    = 10'b0000000000;
-localparam FUNCT_SUB_RAW    = 10'b0100000000;
-localparam FUNCT_OR_RAW     = 10'b0000000110;
-localparam FUNCT_XOR_RAW    = 10'b0000000100;
-localparam FUNCT_AND_RAW    = 10'b0000000111;
-localparam FUNCT_SLT_RAW    = 10'b0000000010;
-localparam FUNCT_SLTU_RAW   = 10'b0000000011;
-localparam FUNCT_SLL_RAW    = 10'b0000000001;
-localparam FUNCT_SRL_RAW    = 10'b0000000101;
-localparam FUNCT_SRA_RAW    = 10'b0100000101;
+localparam MEM_FUNCT_LB_RAW  = 3'b000;
+localparam MEM_FUNCT_LH_RAW  = 3'b001;
+localparam MEM_FUNCT_LW_RAW  = 3'b010;
+localparam MEM_FUNCT_LBU_RAW = 3'b100;
+localparam MEM_FUNCT_LHU_RAW = 3'b101;
+//Decoded in seperate processes
+localparam MEM_FUNCT_SB_RAW  = 3'b000;
+localparam MEM_FUNCT_SH_RAW  = 3'b001;
+localparam MEM_FUNCT_SW_RAW  = 3'b010;
+
+localparam MEM_FUNCT_NOP_OH = 8'b00000000;
+localparam MEM_FUNCT_LB_OH  = 8'b00000001;
+localparam MEM_FUNCT_LH_OH  = 8'b00000010;
+localparam MEM_FUNCT_LW_OH  = 8'b00000100;
+localparam MEM_FUNCT_LBU_OH = 8'b00001000;
+localparam MEM_FUNCT_LHU_OH = 8'b00010000;
+localparam MEM_FUNCT_SB_OH  = 8'b00100000;
+localparam MEM_FUNCT_SH_OH  = 8'b01000000;
+localparam MEM_FUNCT_SW_OH  = 8'b10000000;
+
+localparam BR_FUNCT_BEQ_RAW  = 3'b000;
+localparam BR_FUNCT_BNE_RAW  = 3'b001;
+localparam BR_FUNCT_BLT_RAW  = 3'b100;
+localparam BR_FUNCT_BGE_RAW  = 3'b101;
+localparam BR_FUNCT_BLTU_RAW = 3'b110;
+localparam BR_FUNCT_BGEU_RAW = 3'b111;
+
+localparam BR_FUNCT_NOP_OH  = 7'b0000000;
+localparam BR_FUNCT_BEQ_OH  = 7'b0000001;
+localparam BR_FUNCT_BNE_OH  = 7'b0000010;
+localparam BR_FUNCT_BLT_OH  = 7'b0000100;
+localparam BR_FUNCT_BGE_OH  = 7'b0001000;
+localparam BR_FUNCT_BLTU_OH = 7'b0010000;
+localparam BR_FUNCT_BGEU_OH = 7'b0100000;
+//Handles JALR and JAL
+localparam BR_FUNCT_JUMP_OH = 7'b1000000;
 
 reg [31:0] instr;
 
@@ -90,7 +128,7 @@ begin
         FUNCT_SLL_RAW : decode_ex_funct = FUNCT_SLL_OH ;
         FUNCT_SRL_RAW : decode_ex_funct = FUNCT_SRL_OH ;
         FUNCT_SRA_RAW : decode_ex_funct = FUNCT_SRA_OH ;
-        default       : decode_ex_funct = 10'b0;
+        default       : decode_ex_funct = FUNCT_NOP_OH ;
     endcase
 endfunction
 
@@ -110,17 +148,40 @@ always @ (*) begin
     endcase
 end
 
-LOADS I-TYPE
-32'b?????????????????000?????0000011 :  = LB
-32'b?????????????????001?????0000011 :  = LH
-32'b?????????????????010?????0000011 :  = LW
-32'b?????????????????100?????0000011 :  = LBU
-32'b?????????????????101?????0000011 :  = LHU
+/*****************************************************************************/
+/* Memory function generation                                                */
+/*****************************************************************************/
+wire [7:0] mem_funct_load;
+wire [7:0] mem_funct_store;
+wire [7:0] mem_funct_nxt;
 
-STORES S-TYPE
-32'b?????????????????000?????0100011 :  = SB
-32'b?????????????????001?????0100011 :  = SH
-32'b?????????????????010?????0100011 :  = SW
+always @ (*) begin
+    case (funct3)
+        MEM_FUNCT_LB_RAW : mem_funct_load = MEM_FUNCT_LB_OH;
+        MEM_FUNCT_LH_RAW : mem_funct_load = MEM_FUNCT_LH_OH;
+        MEM_FUNCT_LW_RAW : mem_funct_load = MEM_FUNCT_LW_OH;
+        MEM_FUNCT_LBU_RAW: mem_funct_load = MEM_FUNCT_LBU_OH;
+        MEM_FUNCT_LHU_RAW: mem_funct_load = MEM_FUNCT_LHU_OH;
+        default          : mem_funct_load = MEM_FUNCT_NOP_OH;
+    endcase
+end
+
+always @ (*) begin
+    case (funct3)
+        MEM_FUNCT_SB_RAW : mem_funct_store = MEM_FUNCT_SB_OH;
+        MEM_FUNCT_SH_RAW : mem_funct_store = MEM_FUNCT_SH_OH;
+        MEM_FUNCT_SW_RAW : mem_funct_store = MEM_FUNCT_SW_OH;
+        default          : mem_funct_store = MEM_FUNCT_NOP_OH;
+    endcase
+end
+
+always @ (*) begin
+    case (opcode) 
+       OPCODE_LOAD  : mem_funct_nxt = mem_funct_load; 
+       OPCODE_STORE : mem_funct_nxt = mem_funct_store; 
+       default      : mem_funct_nxt = MEM_FUNCT_NOP_OH;
+    endcase
+end
 
 /*****************************************************************************/
 /* Immediate generation                                                      */
@@ -147,6 +208,9 @@ always @ (*) begin
         OPCODE_AUIPC     : immediate_nxt = u_im;
         OPCODE_LOAD      : immediate_nxt = i_im;
         OPCODE_STORE     : immediate_nxt = i_im;
+        //rd <- PC + 4
+        OPCODE_JALR      : immediate_nxt = 'h4;
+        OPCODE_JAL       : immediate_nxt = 'h4;
         /* Not implemented */
         OPCODE_MISC_MEM  : immediate_nxt = i_im;
         OPCODE_SYSTEM    : immediate_nxt = i_im;
@@ -154,10 +218,55 @@ always @ (*) begin
     endcase
 end
 
+/*****************************************************************************/
+/* Branch function generation                                                */
+/*****************************************************************************/
+
+wire [6:0] br_funct_branch;
+wire [6:0] br_funct_nxt;
+
+always @ (*) begin
+    case (funct3) 
+        BR_FUNCT_BEQ_RAW  : br_funct_branch = BR_FUNCT_BEQ_OH;
+        BR_FUNCT_BNE_RAW  : br_funct_branch = BR_FUNCT_BNE_OH;
+        BR_FUNCT_BLT_RAW  : br_funct_branch = BR_FUNCT_BLT_OH;
+        BR_FUNCT_BGE_RAW  : br_funct_branch = BR_FUNCT_BGE_OH;
+        BR_FUNCT_BLTU_RAW : br_funct_branch = BR_FUNCT_BLTU_OH;
+        BR_FUNCT_BGEU_RAW : br_funct_branch = BR_FUNCT_BGEU_OH;
+        default           : br_funct_branch = BR_FUNCT_NOP_OH;
+    endcase
+end
+
+always @ (*) begin
+    case (opcode) 
+        OPCODE_BRANCH : br_funct_nxt = br_funct_branch;
+        OPCODE_JAL,
+        OPCODE_JALR   : br_funct_nxt = BR_FUNCT_JUMP_OH;
+        default       : br_funct_nxt = BR_FUNCT_NOP_OH;
+    endcase
+end
+
+/*****************************************************************************/
+/* Branch target generation                                                  */
+/*****************************************************************************/
+
+wire [31:0] br_imm;
+wire [31:0] target_nxt;
+
+always @ (*) begin
+    case (opcode) 
+        OPCODE_BRANCH : br_imm = b_imm;
+        OPCODE_JAL    : br_imm = j_imm;
+        OPCODE_JALR   : br_imm = i_imm;
+        default       : br_imm = 32'b0;
+    endcase
+end
+
+assign target_nxt = if_id_pc + br_imm; 
+
+
 /* TODO
- * Assign LOAD/STORE funct
- * Assign BRANCH funct
- * Drive branch target out
+ * Drive PC on ALU mux
  * Hazard logic
  * Stall back logic
  * Cache tag compare
