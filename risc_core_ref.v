@@ -1,4 +1,17 @@
-module riscv_core_ref ();
+module riscv_core_ref (
+input clk,
+input rstn,
+//Instruction memory interface, combinational
+output [31:0] instr_mem_addr,
+input  [31:0] instr_mem_rdata,
+//output        branch_taken,
+//output        illegal_instruction,
+//Data memory interface, read data expected combinational
+output [31:0] data_mem_addr,
+output        data_mem_write,
+output [31:0] data_mem_wdata,
+input  [31:0] data_mem_rdata
+);
 
 localparam BEQ   = 6'h00;
 localparam BNE   = 6'h01;
@@ -40,6 +53,7 @@ localparam SW    = 6'h24;
 
 reg [31:0] rf [0:31];
 
+wire [31:0] instr_raw;
 wire [5:0] instr_e;
 wire       illegal_instr;
 
@@ -79,6 +93,9 @@ assign j_im = {{11{sign}}, instr_raw[19:12], instr_raw[20], instr_raw[30:21], 1'
 
 assign rsj = rf[rsj_sel];
 assign rsk = rf[rsk_sel];
+
+assign instr_mem_addr = pc_ff;
+assign instr_raw = instr_mem_rdata;
 
 always @ (*) begin
     illegal_instr = 1'b0;
@@ -161,7 +178,6 @@ end
 //ALU instruction
 always @ (*) begin
     alu_op = 1'b1;
-    rf_wdata = 0;
     case (instr_e) 
         JALR,    
         JAL:   rf_wdata = pc_ff + 4;
@@ -191,10 +207,16 @@ always @ (*) begin
 end
 
 //MEM operation
+
+assign data_mem_addr = {d_addr[31:2], 2'b00};
+assign data_mem_wdata = data_mem_wdata_l;
+assign data_mem_write = d_write;
+
 always @ (*) begin
     d_write = 1;
     d_wdata = 0;
     d_wmask = 0;
+    d_addr = i_imm + rsj;
     case (instr_e) 
         SB: begin
             d_wdata = {4{rsk[7:0]}};
@@ -212,43 +234,43 @@ always @ (*) begin
     endcase
 end
 
+always @ (*) begin
+    if (d_write) begin
+        data_mem_wdata_l[7:0]   = (d_wmask[0]) ? d_wdata[7:0]   : d_mem_rdata[7:0]; 
+        data_mem_wdata_l[15:8]  = (d_wmask[1]) ? d_wdata[15:8]  : d_mem_rdata[15:8];
+        data_mem_wdata_l[23:16] = (d_wmask[2]) ? d_wdata[23:16] : d_mem_rdata[23:16];
+        data_mem_wdata_l[31:24] = (d_wmask[3]) ? d_wdata[31:24] : d_mem_rdata[31:24];
+    end
+end
+
+always @ (*) begin
+    load_op = 1'b1;
+    case (instr_e) 
+        LBU : rf_wdata <= 32'h000000FF & data_mem_rdata;
+        LHU : rf_wdata <= 32'h0000FFFF & data_mem_rdata;
+        LW  : rf_wdata <= data_mem_rdata;
+        LB  : rf_wdata <= {{24{data_mem_rdata[7]}},  data_mem_rdata[7:0]};   
+        LH  : rf_wdata <= {{16{data_mem_rdata[15]}}, data_mem_rdata[15:8]};  
+        default: load_op = 1'b0;
+    endcase
+end
+
+//Assert (!(load_op && alu_op)) else rf_wdata is driven X
+
+
 integer i;
 
 always @ (posedge clk, negedge rstn) begin
     if (~rstn) begin
+        for (i = 0 ; i < 32; i = i + 1) begin
+            rf[i] = 0;
+        end
+        pc_ff = 0;
     end
     else begin
         pc_ff <= pc_nxt;
-        if (alu_op) begin
-            rf[rsd] <= rf_wdata;
-        end
-        else if (d_write) begin
-            if (d_wmask[0]) begin
-                for (i = 0; i < 8; i = i+1) begin
-                    d[d_addr][i] <= d_wdata[i];
-                end
-            if (d_wmask[1]) begin
-                for (i = 8; i < 16; i = i+1) begin
-                    d[d_addr][i] <= d_wdata[i];
-                end
-            end
-            if (d_wmask[2]) begin
-                for (i = 16; i < 24; i = i+1) begin
-                    d[d_addr][i] <= d_wdata[i];
-                end
-            end
-            if (d_wmask[3]) begin
-                for (i = 24; i < 32; i = i+1) begin
-                    d[d_addr][i] <= d_wdata[i];
-                end
-            end
-        end // else if (d_write)
-        else if (load_op) begin
-            case (instr_e) 
-                LB : rf[rsd] <= 32'h000000FF & d[d_addr];
-                LH : rf[rsd] <= 32'h0000FFFF & d[d_addr];
-                LW : rf[rsd] <= 32'hFFFFFFFF & d[d_addr];
-            endcase
+        if (alu_op || load_op) begin
+            rf[rsd_sel] <= rf_wdata;
         end
     end
 end
