@@ -22,10 +22,10 @@ localparam BGEU  = 6'h05;
 localparam JALR  = 6'h06;
 localparam JAL   = 6'h07;
 localparam LUI   = 6'h08;
-localparam AUIP  = 6'h09;
+localparam AUIPC = 6'h09;
 localparam ADDI  = 6'h0A;
 localparam SLTI  = 6'h0B;
-localparam SLTI  = 6'h0C;
+localparam SLTIU = 6'h0C;
 localparam XORI  = 6'h0D;
 localparam ORI   = 6'h0E;
 localparam ANDI  = 6'h0F;
@@ -52,10 +52,12 @@ localparam SH    = 6'h23;
 localparam SW    = 6'h24;
 
 reg [31:0] rf [0:31];
+reg [31:0] pc_ff;
+reg [31:0] data_mem_wdata_l;
 
 wire [31:0] instr_raw;
-wire [5:0] instr_e;
-wire       illegal_instr;
+reg  [5:0] instr_e;
+reg        illegal_instr;
 
 wire [31:0] i_im;
 wire [31:0] s_im;
@@ -69,17 +71,18 @@ wire [4:0]  rsd_sel;
 wire [31:0] rsj; 
 wire [31:0] rsk;
 
-wire [31:0] pc_nxt;
-wire [31:0] rf_wdata;
+reg  [31:0] pc_nxt;
+reg  [31:0] rf_wdata;
 
-wire [31:0] d_addr;
-wire [31:0] d_wdata;
-wire [3:0]  d_wmask;
-wire        d_write;
-wire        take_branch;
-wire        alu_op;
+reg  [31:0] d_addr;
+reg  [31:0] d_wdata;
+reg  [3:0]  d_wmask;
+reg         d_write;
+reg         take_branch;
+reg         alu_op;
+reg         load_op;
 
-assign rd_sel  = instr_raw[11:7];
+assign rsd_sel = instr_raw[11:7];
 assign rsj_sel = instr_raw[19:15];
 assign rsk_sel = instr_raw[24:20];
 assign sign    = instr_raw[31];
@@ -137,7 +140,7 @@ always @ (*) begin
         32'b?????????????????000?????0100011: instr_e = SB;
         32'b?????????????????001?????0100011: instr_e = SH;
         32'b?????????????????010?????0100011: instr_e = SW;
-        default:                            : illegal_instr = 1'b1;
+        default                               illegal_instr = 1'b1;
     endcase
 end
 
@@ -152,7 +155,7 @@ always @ (*) begin
         BGEU:    take_branch = (rsj > rsk) ? 1'b1 : 1'b0;
         JALR,    
         JAL:     take_branch = 1'b1;
-        default: take_branch = 1'b0;
+        default  take_branch = 1'b0;
     endcase 
 end
 
@@ -167,7 +170,7 @@ always @ (*) begin
             BGEU:    pc_nxt = pc_ff + b_im;
             JALR,    
             JAL:     pc_nxt = pc_ff + j_im;
-            default: pc_nxt = pc_ff + 4;
+            default  pc_nxt = pc_ff + 4;
         endcase
     end
     else begin
@@ -182,7 +185,7 @@ always @ (*) begin
         JALR,    
         JAL:   rf_wdata = pc_ff + 4;
         LUI:   rf_wdata = {u_im[31:12], 12'b0};
-        AUIPC: rf_wdata = pc_ff + u_imm;
+        AUIPC: rf_wdata = pc_ff + u_im;
         ADDI:  rf_wdata = rsj + i_im;
         SLTI:  rf_wdata = ($signed(rsj) < $signed(i_im)) ? 1 : 0;
         SLTIU: rf_wdata = (rsj < i_im) ? 1 : 0;
@@ -198,11 +201,11 @@ always @ (*) begin
         XOR:   rf_wdata = rsj ^ rsk;
         AND:   rf_wdata = rsj & rsk;
         SLT:   rf_wdata = ($signed(rsj) < $signed(rsk)) ? 1 : 0;
-        SLTU:  rf_wdata = (rsj < rsk) ? 1 : 0;;
+        SLTU:  rf_wdata = (rsj < rsk) ? 1 : 0;
         SLL:   rf_wdata = rsj << (rsk & 'h1F);
         SRL:   rf_wdata = rsj >> (rsk & 'h1F);
         SRA:   rf_wdata = rsj >>> (rsk & 'h1F);
-        default: alu_op = 1'b0;
+        default alu_op = 1'b0;
     endcase
 end
 
@@ -216,7 +219,7 @@ always @ (*) begin
     d_write = 1;
     d_wdata = 0;
     d_wmask = 0;
-    d_addr = i_imm + rsj;
+    d_addr = i_im + rsj;
     case (instr_e) 
         SB: begin
             d_wdata = {4{rsk[7:0]}};
@@ -230,16 +233,16 @@ always @ (*) begin
             d_wdata = rsk;
             d_wmask = 'hF << d_addr[1:0];
         end
-        default: d_write = 0;
+        default d_write = 0;
     endcase
 end
 
 always @ (*) begin
     if (d_write) begin
-        data_mem_wdata_l[7:0]   = (d_wmask[0]) ? d_wdata[7:0]   : d_mem_rdata[7:0]; 
-        data_mem_wdata_l[15:8]  = (d_wmask[1]) ? d_wdata[15:8]  : d_mem_rdata[15:8];
-        data_mem_wdata_l[23:16] = (d_wmask[2]) ? d_wdata[23:16] : d_mem_rdata[23:16];
-        data_mem_wdata_l[31:24] = (d_wmask[3]) ? d_wdata[31:24] : d_mem_rdata[31:24];
+      data_mem_wdata_l[7:0]   = (d_wmask[0]) ? d_wdata[7:0]   : data_mem_rdata[7:0]; 
+      data_mem_wdata_l[15:8]  = (d_wmask[1]) ? d_wdata[15:8]  : data_mem_rdata[15:8];
+      data_mem_wdata_l[23:16] = (d_wmask[2]) ? d_wdata[23:16] : data_mem_rdata[23:16];
+      data_mem_wdata_l[31:24] = (d_wmask[3]) ? d_wdata[31:24] : data_mem_rdata[31:24];
     end
 end
 
@@ -251,7 +254,7 @@ always @ (*) begin
         LW  : rf_wdata <= data_mem_rdata;
         LB  : rf_wdata <= {{24{data_mem_rdata[7]}},  data_mem_rdata[7:0]};   
         LH  : rf_wdata <= {{16{data_mem_rdata[15]}}, data_mem_rdata[15:8]};  
-        default: load_op = 1'b0;
+        default load_op = 1'b0;
     endcase
 end
 
