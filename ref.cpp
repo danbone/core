@@ -1,42 +1,87 @@
+class instruction {
 
-assign rsd_sel = instr_raw[11:7];
-assign rsj_sel = instr_raw[19:15];
-assign rsk_sel = instr_raw[24:20];
-assign sign    = instr_raw[31];
+public:
 
-uint_t rsd_sel;
-uint_t rsj_sel;
-uint_t rsk_sel;
+private:
 
-rsd_sel = (instr_raw >> 7)  & 0x1F;
-rsj_sel = (instr_raw >> 15) & 0x1F;
-rsk_sel = (instr_raw >> 20) & 0x1F;
+   uint32_t extract_from_32b (uint32_t val, uint32_t high, uint32_t low) {
+      uint32_t mask = (2**((high+1)-low))-1;
+      return ((val >> low) & mask);
+   }
 
-uint_t sign_extend (uint_t sign_idx, uint_t data) {
-    uint_t sign = 0;
-    sign = (data >> sign_idx) & 0x1;
-    for (i = sign_idx+1; i < 32; i++) {
-        data |= (sign << i);
-    }
-    return data;
+   uint32_t extract_register_d(uint32_t val) {
+      return extract_from_32b(val, 11, 7);
+   }
+
+   uint32_t extract_register_j(uint32_t val) {
+      return extract_from_32b(val, 19, 15);
+   }
+
+   uint32_t extract_register_k(uint32_t val) {
+      return extract_from_32b(val, 24, 20);
+   }
+
+   uint32_t sign_extend (uint32_t sign, uint32_t val, uint32_t width) {
+      for (uint32_t i = width; i < 32; i++) {
+         val |= (sign << i);
+      }
+      return val;
+   }
+
+   virtual void execute (rf_t *rf, mem_t *dmem) {
+
+   }
+
 }
 
 
-uint_t extract_immediate_i (uint data) {
-    uint_t immediate_width = 11;
 
+uint32_t extract_immediate_type_I (uint32_t data) {
+   uint32_t sign;
+   uint32_t ret;
+   sign = (data >> 31) & 0x1;
+   ret = extract_from_32b(data, 30, 20);
+   ret = sign_extend(sign, ret, 11);
+   return ret;
 }
 
-uint_t i_im;
-uint_t s_im;
-uint_t b_im;
-uint_t j_im;
+uint32_t extract_immediate_type_S (uint32_t data) {
+   uint32_t sign;
+   uint32_t ret;
+   sign = (data >> 31) & 0x1;
+   ret = (extract_from_32b(data, 30, 25) << 5) +
+         (extract_from_32b(data, 11,  7));
+   ret = sign_extend(sign, ret, 11);
+   return ret;
+}
 
+uint32_t extract_immediate_type_B (uint32_t data) {
+   uint32_t sign;
+   uint32_t ret;
+   sign = (data >> 31) & 0x1;
+   ret = (extract_from_32b(data,  7,  7)  << 11) +
+         (extract_from_32b(data, 30, 25)  <<  5) +
+         (extract_from_32b(data, 11,  8)  <<  1);
+   ret = sign_extend(sign, ret, 12);
+   return ret;
+}
 
+uint32_t extract_immediate_type_U (uint32_t data) {
+   uint32_t sign;
+   uint32_t ret;
+   sign = (data >> 31) & 0x1;
+   ret = (extract_from_32b(data, 30, 12)  << 12);
+   ret = sign_extend(sign, ret, 31);
+   return ret;
+}
 
-
-assign i_im = {{20{sign}}, instr_raw[30:20]};
-assign s_im = {{20{sign}}, instr_raw[30:25], instr_raw[11:7]};
-assign b_im = {{19{sign}}, instr_raw[7], instr_raw[30:25], instr_raw[11:8], 1'b0};
-assign u_im = {sign, instr_raw[30:12], 12'b0};
-assign j_im = {{11{sign}}, instr_raw[19:12], instr_raw[20], instr_raw[30:21], 1'b0};
+uint32_t extract_immediate_type_J (uint32_t data) {
+   uint32_t sign;
+   uint32_t ret;
+   sign = (data >> 31) & 0x1;
+   ret = (extract_from_32b(data, 19, 12))  << 12) +
+         (extract_from_32b(data, 20, 20)   << 11) +
+         (extract_from_32b(data, 30, 21)   <<  1);
+   ret = sign_extend(sign, ret, 20);
+   return ret;
+}
