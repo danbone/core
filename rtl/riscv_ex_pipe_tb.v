@@ -1,7 +1,20 @@
 module riscv_ex_pipe_tb ();
+localparam ALU_OP   = 'h0;
+localparam LOAD_OP  = 'h1;
+localparam STORE_OP = 'h2;
+
+localparam NUM_ALU_FUNCTS   = 10;
+localparam NUM_LOAD_FUNCTS  = 5;
+localparam NUM_STORE_FUCNTS = 3;
 
 reg                       clk;
 reg                       rstn;
+reg [1:0]                 operation;
+
+
+reg [`EX_FUNCT_W-1:0]     alu_functions   [0:NUM_ALU_FUNCTS-1];
+reg [`MEM_FUNCT_W-1:0]    load_functions  [0:NUM_LOAD_FUNCTS-1];
+reg [`MEM_FUNCT_W-1:0]    store_functions [0:NUM_STORE_FUNCTS-1];
 
 always clk = #5 ~clk;
 
@@ -13,39 +26,104 @@ initial begin
  #5 rstn = 1'b1;
 end
 
+initial begin
+    alu_functions[0] = `EX_ADD ;
+    alu_functions[1] = `EX_SUB ;
+    alu_functions[2] = `EX_OR  ;
+    alu_functions[3] = `EX_XOR ;
+    alu_functions[4] = `EX_AND ;
+    alu_functions[5] = `EX_STL ;
+    alu_functions[6] = `EX_STLU;
+    alu_functions[7] = `EX_SLL ;
+    alu_functions[8] = `EX_SRL ;
+    alu_functions[9] = `EX_SRA ;
+
+    load_functions[0] = `MEM_LB ;
+    load_functions[1] = `MEM_LH ;
+    load_functions[2] = `MEM_LW ;
+    load_functions[3] = `MEM_LBU;
+    load_functions[4] = `MEM_LHU;
+
+    store_functions[0] = `MEM_SB;
+    store_functions[1] = `MEM_SH;
+    store_functions[2] = `MEM_SW;
+end
+
+function [`EX_FUNCT_W-1:0] generate_alu_function();
+integer rand_var;
+begin
+    rand_var = $urandom % NUM_ALU_FUNCTS;
+    return alu_functions[rand_var];
+end
+endfunction
+
+function [`MEM_FUNCT_W-1:0] generate_load_function();
+integer rand_var;
+begin
+    rand_var = $urandom % NUM_LOAD_FUNCTS;
+    return load_functions[rand_var];
+end
+endfunction
+
+function [`MEM_FUNCT_W-1:0] generate_load_function();
+integer rand_var;
+begin
+    rand_var = $urandom % NUM_STORE_FUNCTS;
+    return store_functions[rand_var];
+end
+endfunction
+
 task stim_generation ();
 begin
     //ALU or MEM instruction
     id_ex_mem_data = $urandom;
     id_ex_wb_rsd   = $urandom & 'h1f;
-    alu_not_mem    = $urandom & 'h1;
-    if (alu_not_mem) begin
-        alu_funct = $urandom % `EX_FUNCT_W;
-        id_ex_funct = 'h0;
-        for (i = 0 ; i < `EX_FUNCT_W; i=i+1) begin
-            id_ex_funct[i] = (alu_funct == i) ? 1'b1 : 1'b0;
+    operation      = $urandom % 3;
+    case (operation) 
+        ALU_OP: begin
+            id_ex_funct = generate_alu_function();
+            id_ex_op2 = $urandom;
+            if (    id_ex_funct == `EX_SLL || 
+                    id_ex_funct == `EX_SRL || 
+                    id_ex_funct == `EX_SRA   ) begin
+                id_ex_op1 = $urandom & 'h1f;
+            end
+            else begin
+                id_ex_op1 = $urandom;
+            end
+            id_ex_mem_funct = `MEM_NOP;
         end
-        id_ex_op2 = $urandom;
-        if (    id_ex_funct == `EX_SLL || 
-                id_ex_funct == `EX_SRL || 
-                id_ex_funct == `EX_SRA) begin
-            id_ex_op1 = $urandom & 'h1f;
-        end
-        else begin
+        LOAD_OP: begin
+            id_ex_mem_funct = generate_load_function();
+            id_ex_funct = `EX_ADD;
             id_ex_op1 = $urandom;
+            id_ex_op2 = $urandom;
+            //Ensure they are aligned to their boundary correctly
+            if (id_ex_mem_funct == `MEM_LW) begin
+                id_ex_op1[1:0] = 2'b00;
+                id_ex_op2[1:0] = 2'b00;
+            end
+            else if (id_ex_mem_funct == `MEM_LH || id_ex_mem_funct == `MEM_LHU) begin
+                id_ex_op1[0] = 1'b0;
+                id_ex_op2[0] = 1'b0;
+            end
         end
-        id_ex_mem_funct = `MEM_NOP;
-    end
-    else begin
-        mem_funct = $urandom % `MEM_FUNCT_W;
-        id_ex_mem_funct = 'h0;
-        for (i = 0; i < `MEM_FUNCT_W; i=i+1) begin
-            id_ex_mem_funct[i] = (mem_funct == i) ? 1'b1 : 1'b0;
+        STORE_OP: begin
+            id_ex_mem_funct = generate_store_function();
+            id_ex_funct = `EX_ADD;
+            id_ex_op1 = $urandom;
+            id_ex_op2 = $urandom;
+            //Ensure they are aligned to their boundary correctly
+            if (id_ex_mem_funct == `MEM_SW) begin
+                id_ex_op1[1:0] = 2'b00;
+                id_ex_op2[1:0] = 2'b00;
+            end
+            else if (id_ex_mem_funct == `MEM_SH) begin
+                id_ex_op1[0] = 1'b0;
+                id_ex_op2[0] = 1'b0;
+            end
         end
-        id_ex_funct = `EX_ADD;
-        id_ex_op1 = $urandom;
-        id_ex_op2 = $urandom;
-    end
+    endcase
 end
 endtask
 
@@ -53,87 +131,135 @@ wire [31:0] alu_result;
 wire [31:0] load_data;
 wire [31:0] store_data;
 
-wire alu_op;
-wire load_op;
-wire store_op;
-
 
 always @ (*) begin
-    if (rstn == 0) begin
-        reg_check_fifo_flush = 1'b1;
-        mem_check_fifo_flush = 1'b1;
-    end
-    else begin
-        //Default assignments
-        reg_check_fifo_flush = 1'b0;
-        mem_check_fifo_flush = 1'b0;
-        reg_check_fifo_push = 1'b0;
-        load_check_fifo_push = 1'b0;
-        store_check_fifo_push = 1'b0;
-        //Modeling logic
-        if (id_ex_rdy && id_ex_ack) begin
-            case ({store_op, load_op, alu_op}) 
-                //ALU_OP
-                3'b001: begin 
-                    case (id_ex_funct) 
-                        `EX_ADD : alu_result = id_ex_op1 + id_ex_op2;
-                        `EX_SUB : alu_result = id_ex_op1 - id_ex_op2;
-                        `EX_OR  : alu_result = id_ex_op1 | id_ex_op2;
-                        `EX_XOR : alu_result = id_ex_op1 ^ id_ex_op2;
-                        `EX_AND : alu_result = id_ex_op1 & id_ex_op2;
-                        `EX_STL : alu_result = ($signed(id_ex_op1) < $signed(id_ex_op2)) 
-                                                ?  1'b1 : 1'b0;
-                        `EX_STLU: alu_result = (id_ex_op1 < id_ex_op2) ? 1'b1 : 1'b0;
-                        `EX_SLL : alu_result = id_ex_op1 << id_ex_op2;
-                        `EX_SRL : alu_result = id_ex_op1 >> id_ex_op2;
-                        `EX_SRA : alu_result = id_ex_op1 >>> id_ex_op2;
-                        default : alu_result = 32'b0;
-                    endcase
-                    reg_check_fifo_data_in = {id_ex_wb_rsd, alu_result};
-                    reg_check_fifo_push    = 1'b1;
-                end
-                //LOAD_OP
-                3'b010: begin 
-                    mem_address = id_ex_op1 + id_ex_op2;
-                    //This is wrong, fix it
-                    //Figure out rdata
-                    case (id_ex_mem_funct) 
-                        `MEM_LB, 
-                        `MEM_LBU : load_data = (next_load_check_fifo_data_out 
-                                                    >> mem_address[1:0]) & 'hf;
-                        `MEM_LH, 
-                        `MEM_LHU : load_data = (next_load_check_fifo_data_out 
-                                                    >> mem_address[1:0]) & 'hff;
-                        `MEM_LW  : load_data = next_load_check_fifo_data_out;
-                    endcase
-                    next_load_check_fifo_pop = 1'b1;
-                    load_check_fifo_data_in = {mem_address[31:2], 2'b0};
-                    load_check_fifo_push    = 1'b1;
-                    reg_check_fifo_data_in = load_data;
-                    reg_check_fifo_push    = 1'b1;
-                end
-                //STORE_OP
-                3'b100: begin
-                    
-                    store_check_fifo_data_in = {store_wmask, store_data, alu_result};
-                    store_check_fifo_push    = 1'b1;
-                end
-                //Illegal input
-                default: begin
-                    $display("FATAL: Input is illegal:");
-                    $display("    id_ex_rdy: %x",       id_ex_rdy);
-                    $display("    id_ex_funct: %x",     id_ex_funct);
-                    $display("    id_ex_op1: %x",       id_ex_op1);
-                    $display("    id_ex_op2: %x",       id_ex_op2);
-                    $display("    id_ex_mem_funct: %x", id_ex_mem_funct);
-                    $display("    id_ex_mem_data: %x",  id_ex_mem_data);
-                    $display("    id_ex_wb_rsd: %x",    id_ex_wb_rsd);
+    //Default assignments
+    reg_check_fifo_push      = 1'b0;
+    load_check_fifo_push     = 1'b0;
+    store_check_fifo_push    = 1'b0;
+    next_load_check_fifo_pop = 1'b0;
+    //Modeling logic
+    if (id_ex_rdy && id_ex_ack) begin
+        case (operation) 
+            //ALU_OP
+            ALU_OP: begin 
+                case (id_ex_funct) 
+                    `EX_ADD : alu_result = id_ex_op1 + id_ex_op2;
+                    `EX_SUB : alu_result = id_ex_op1 - id_ex_op2;
+                    `EX_OR  : alu_result = id_ex_op1 | id_ex_op2;
+                    `EX_XOR : alu_result = id_ex_op1 ^ id_ex_op2;
+                    `EX_AND : alu_result = id_ex_op1 & id_ex_op2;
+                    `EX_STL : alu_result = ($signed(id_ex_op1) < $signed(id_ex_op2)) 
+                                            ?  1'b1 : 1'b0;
+                    `EX_STLU: alu_result = (id_ex_op1 < id_ex_op2) ? 1'b1 : 1'b0;
+                    `EX_SLL : alu_result = id_ex_op1 << id_ex_op2;
+                    `EX_SRL : alu_result = id_ex_op1 >> id_ex_op2;
+                    `EX_SRA : alu_result = id_ex_op1 >>> id_ex_op2;
+                    default : alu_result = 32'b0;
+                endcase
+                reg_check_fifo_data_in = {id_ex_wb_rsd, alu_result};
+                reg_check_fifo_push    = 1'b1;
+            end
+            //LOAD_OP
+            LOAD_OP: begin 
+                mem_address = id_ex_op1 + id_ex_op2;
+                //Check address alignment
+                if ((id_ex_mem_funct == `MEM_LH || id_ex_mem_funct == `MEM_LHU) && mem_address[0]) begin
+                    $display("STIM ERROR: Misaligned memory address for half word load : %x", 
+                        mem_address);
                     $finish;
                 end
-            endcase
+                else if (id_ex_mem_funct == `MEM_LW && |(mem_address[1:0])) begin
+                    $display("STIM ERROR: Misaligned memory address for word load : %x", 
+                        mem_address);
+                    $finish;
+                end
+                //Figure out rdata
+                case (id_ex_mem_funct) 
+                    `MEM_LB, 
+                    `MEM_LBU : load_data = (next_load_check_fifo_data_out 
+                                            >> (8*mem_address[1:0])) & 'hf;
+                    `MEM_LH, 
+                    `MEM_LHU : load_data = (next_load_check_fifo_data_out 
+                                            >> (8*mem_address[1:0])) & 'hff;
+                    `MEM_LW  : load_data = next_load_check_fifo_data_out;
+                endcase
+                //Store expected write data
+                reg_check_fifo_push     = 1'b1;
+            //Sign extend
+                if (id_ex_mem_funct == `MEM_LB) begin
+                    reg_check_fifo_data_in  = {{24{load_data[7]}}, load_data[7:0]};
+                end
+                else if (id_ex_mem_funct == `MEM_LH) begin
+                    reg_check_fifo_data_in  = {{16{load_data[15]}}, load_data[15:0]};
+                end
+                else begin
+                    reg_check_fifo_data_in  = load_data;
+                end
+                next_load_check_fifo_pop = 1'b1;
+                //Store expected load address
+                load_check_fifo_data_in = {mem_address[31:2], 2'b0};
+                load_check_fifo_push    = 1'b1;
+                end
+            //STORE_OP
+            STORE_OP: begin
+                mem_address = id_ex_op1 + id_ex_op2;
+                //Check address alignment
+                if (id_ex_mem_funct == `MEM_SH || && mem_address[0]) begin
+                    $display("STIM ERROR: Misaligned memory address for half word store : %x", 
+                        mem_address);
+                    $finish;
+                end
+                else if (id_ex_mem_funct == `MEM_SW && |(mem_address[1:0])) begin
+                    $display("STIM ERROR: Misaligned memory address for word store : %x", 
+                        mem_address);
+                $finish;
+                end
+                case (id_ex_mem_funct) 
+                    `MEM_SB: store_wmask = 'h1; store_data = {4{id_ex_mem_data[7:0]}};
+                    `MEM_SH: store_wmask = 'h3; store_data = {2{id_ex_mem_data[15:0]}};
+                    //STORE WORD
+                    default: store_wmask = 'hF; store_data = id_ex_mem_data;
+                endcase
+                store_check_fifo_data_in = {(store_wmask << mem_address[1:0]), store_data, alu_result};
+                store_check_fifo_push    = 1'b1;
+            end
+            //Illegal input
+            default: begin
+                $display("FATAL: Input is illegal:");
+                $display("    id_ex_rdy: %x",       id_ex_rdy);
+                $display("    id_ex_funct: %x",     id_ex_funct);
+                $display("    id_ex_op1: %x",       id_ex_op1);
+                $display("    id_ex_op2: %x",       id_ex_op2);
+                $display("    id_ex_mem_funct: %x", id_ex_mem_funct);
+                $display("    id_ex_mem_data: %x",  id_ex_mem_data);
+                $display("    id_ex_wb_rsd: %x",    id_ex_wb_rsd);
+                $finish;
+            end
+        endcase
+    end
+end
+
+//BIF BFM
+always @ (posedge clk, negedge rstn) begin
+    if (~rstn) begin
+        data_bif_rdata <= 32'h0;
+        data_bif_ack <= 1'b0;
+        next_load_fifo_pop <= 1'b0;
+    end
+    else begin
+        if (data_bif_req && data_bif_rnw) begin
+            data_bif_rdata <= next_load_fifo_data_out;
+            next_load_fifo_pop <= 1'b1;
+            data_bif_ack       <= 1'b1;
+        end
+        else begin
+            data_bif_ack <= 1'b0;
+            next_load_fifo_pop <= 1'b0;
         end
     end
 end
+
 
 id_ex_rdy,
 id_ex_funct,
