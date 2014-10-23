@@ -68,14 +68,11 @@ module rand_staller (
     output  rdy_out,
     input   ack_out
 );
-parameter BURST_MIN = 0;
+parameter ENABLED   = 1;
+parameter BURST_MIN = 1;
 parameter BURST_MAX = 3;
 parameter STALL_MIN = 1;
 parameter STALL_MAX = 5;
-
-reg  ack_in;
-reg  rdy_out;
-reg rdy_hold;
 
 integer burst;
 integer stall;
@@ -89,44 +86,67 @@ begin
 end
 endfunction
 
-
-assign ack_in = (rdy_out && ack_out) ? 1'b1 : 1'b0;
-
-always @ (*) begin
-    if (
-end
-
-//NEED to buffer rdy incase we end a burst and rdy_in isn't active
-
-always @ (posedge clk, negedge rstn) begin
-    if (!rstn) begin
-        rdy_out <= 0;
-    end
-    else if (clk) begin
-        if (rdy_hld == 1'b0) 
-        if (rdy_out) begin
-            //Wait for ack
-            if (ack_out) begin
-                if (burst > 0) begin
-                    burst <= burst - 1;
-                    rdy_out <= rdy_in;
-                end
-                else begin
-                    stall = randomize(STALL_MIN, STALL_MAX);
-                    burst = randomize(BURST_MIN, BURST_MAX);
-                    rdy_out <= 1'b0;
-                end
+generate
+    if (ENABLED) begin
+        //Sanity check
+        initial begin
+            //Start stalled to avoid undefined behaviour at reset
+            stall = STALL_MAX;
+            burst = BURST_MAX;
+            
+            if (BURST_MIN < 1) begin
+                $display("ERROR: BURST_MIN must be set > 0");
+                $finish;
+            end
+            $display("INFO: Staller enabled - stall %d:%d burst %d:%d", 
+                STALL_MIN, STALL_MAX, BURST_MIN, BURST_MAX);
+        end
+        
+        reg  ack_in;
+        reg  rdy_out;
+        
+        //Bypass ack and rdy if stall count is up and burst count > 0
+        always @ (*) begin
+            if (stall == 0 && burst > 0) begin
+                ack_in = ack_out;
+                rdy_out = rdy_in;
+            end
+            else begin
+                ack_in = 1'b0;
+                rdy_out = 1'b0;
             end
         end
-        //Wait for stall delay to finish
-        else if (stall > 0) begin
-            stall <= stall -1;
-        end
-        //Propagate rdy
-        else begin
-            rdy_out <= rdy_in;
+        
+        //Control stall/burst in sync proc
+        always @ (posedge clk, negedge rstn) begin
+            if (!rstn) begin
+                stall = randomize(STALL_MIN, STALL_MAX);
+                burst = randomize(BURST_MIN, BURST_MAX);
+            end
+            else if (clk) begin
+                if (stall == 0) begin
+                    //Reset the delays
+                    if (burst == 0) begin
+                        stall = randomize(STALL_MIN, STALL_MAX);
+                        burst = randomize(BURST_MIN, BURST_MAX);
+                    end
+                    //Only decrement burst when ack is up
+                    else if (rdy_out && ack_out) begin
+                        burst = burst - 1;
+                    end
+                end
+                else begin
+                    stall = stall - 1;
+                end
+            end    
         end
     end
-end
+    //Staller disabled
+    else begin
+        //Bypass
+        assign ack_in = ack_out;
+        assign rdy_out = rdy_in;
+    end
+endgenerate
 
 endmodule
