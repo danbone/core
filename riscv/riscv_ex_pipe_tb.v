@@ -10,9 +10,14 @@ reg               mem_wb_ack;
 wire [31:0]       mem_wb_data;
 integer           count;
 
+reg               id_ex_rdy_raw;
+wire              id_ex_ack_raw;
+reg  [31:0]       id_ex_data_raw;
+
+
 initial begin
         count = 0;
-        clk = 1'b0;
+        clk  = 1'b0;
         rstn = 1'b1;
     #5  rstn = 1'b0;
     #5  rstn = 1'b1;
@@ -26,21 +31,36 @@ initial begin
 end
 
 always @ (posedge clk) begin
-    if (count < 10) begin
-        count <= count + 1;
-        if (id_ex_ack) begin
-            id_ex_data <= $urandom;
+    if (rstn == 1) begin
+        if (count < 10) begin
             id_ex_rdy <= 1'b1;
+            count <= count + 1;
+            if (id_ex_rdy_raw && id_ex_ack_raw) begin
+                id_ex_data_raw <= $urandom;
+                id_ex_rdy_raw <= 1'b1;
+            end
+            else if (!id_ex_rdy_raw) begin
+                id_ex_rdy_raw  <= 1'b1;
+                id_ex_data_raw <= $urandom;
+            end
+            //Else stalled
         end
         else begin
-            id_ex_rdy <= 1'b0;
+            $finish;
         end
-    end
-    else begin
-        $finish;
     end
 end
 
+rand_staller i_frontend_staller (
+    .clk            (clk),
+    .rstn           (rstn),
+    .rdy_in         (id_ex_rdy_raw),
+    .ack_in         (id_ex_ack_raw),
+    .data_in        (id_ex_data_raw),
+    .rdy_out        (id_ex_rdy),
+    .ack_out        (id_ex_ack),
+    .data_out       (id_ex_data)
+);
 
 initial begin
     $dumpfile("waves.vcd");
@@ -65,10 +85,13 @@ module rand_staller (
     input   rstn,
     input   rdy_in,
     output  ack_in,
+    input [DATA_W-1:0] data_in,
     output  rdy_out,
-    input   ack_out
+    input   ack_out,
+    output [DATA_W-1:0] data_out
 );
 parameter ENABLED   = 1;
+parameter DATA_W    = 32;
 parameter BURST_MIN = 1;
 parameter BURST_MAX = 3;
 parameter STALL_MIN = 1;
@@ -122,14 +145,17 @@ generate
                 STALL_MIN, STALL_MAX, BURST_MIN, BURST_MAX);
         end
         
-        reg  ack_in;
-        reg  rdy_out;
+        reg              ack_in;
+        reg              rdy_out;
+        //Treat data_out as a latch as its only sampled on handshake
+        reg [DATA_W-1:0] data_out;
         
         //Bypass ack and rdy if stall count is up and burst count > 0
         always @ (*) begin
             if (stall == 0 && burst > 0) begin
                 ack_in = ack_out;
                 rdy_out = rdy_in;
+                data_out = data_in;
             end
             else begin
                 ack_in = 1'b0;
@@ -163,9 +189,13 @@ generate
     end
     //Staller disabled
     else begin
+        wire              ack_in;
+        wire              rdy_out;
+        wire [DATA_W-1:0] data_out;
         //Bypass
         assign ack_in = ack_out;
         assign rdy_out = rdy_in;
+        assign data_out = data_in;
     end
 endgenerate
 
