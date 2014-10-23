@@ -14,6 +14,14 @@ reg               id_ex_rdy_raw;
 wire              id_ex_ack_raw;
 reg  [31:0]       id_ex_data_raw;
 
+reg [31:0]        check_fifo_fifo_data_in
+reg               check_fifo_fifo_push;
+reg [31:0]        check_fifo_fifo_data_out;
+reg               check_fifo_fifo_pop;
+reg               check_fifo_fifo_full;
+reg               check_fifo_fifo_empty;
+reg               check_fifo_fifo_flush;
+
 
 initial begin
         count = 0;
@@ -62,6 +70,18 @@ rand_staller i_frontend_staller (
     .data_out       (id_ex_data)
 );
 
+//Leave outputs unconnected as ack will be stalled
+rand_staller i_backend_staller (
+    .clk            (clk),
+    .rstn           (rstn),
+    .rdy_in         (mem_wb_rdy),
+    .ack_in         (mem_wb_ack),
+    .data_in        (mem_wb_data),
+    .rdy_out        (),
+    .ack_out        (1'b1),
+    .data_out       ()
+);
+
 initial begin
     $dumpfile("waves.vcd");
     $dumpvars(0, i_riscv_ex_pipe);
@@ -77,6 +97,49 @@ riscv_ex_pipe i_riscv_ex_pipe (
     .mem_wb_ack        (mem_wb_ack),
     .mem_wb_data       (mem_wb_data)
 );
+
+
+always @ (posedge clk) begin
+    if (rstn == 1) begin
+        if (mem_wb_rdy && mem_wb_ack) begin
+            if (check_fifo_data_out != mem_wb_data) begin
+                $display("ERROR: Mismatch check_fifo_data_out != mem_wb_data - %8X vs %8X",
+                    check_fifo_data_out, mem_wb_data);
+            end
+        end
+    end
+end
+
+
+riscv_fifo #(
+        .DEPTH            (3),
+        .DATA_W           (32),
+        .ASSERT_OVERFLOW  (1),
+        .ASSERT_UNDERFLOW (1),
+        .ENABLE_BYPASS    (0)
+    ) 
+    i_check_fifo (
+        .clk              (clk),
+        .rstn             (rstn),
+        .fifo_data_in     (id_ex_data),
+        .fifo_push        (id_ex_rdy && id_ex_ack),
+        .fifo_data_out    (check_fifo_fifo_data_out),
+        .fifo_pop         (mem_wb_rdy && mem_wb_ack),
+        .fifo_full        (check_fifo_fifo_full),
+        .fifo_empty       (check_fifo_fifo_empty),
+        .fifo_flush       (1'b0)
+/*
+        .fifo_data_in     (check_fifo_fifo_data_in),
+        .fifo_push        (check_fifo_fifo_push),
+        .fifo_data_out    (check_fifo_fifo_data_out),
+        .fifo_pop         (check_fifo_fifo_pop),
+        .fifo_full        (check_fifo_fifo_full),
+        .fifo_empty       (check_fifo_fifo_empty),
+        .fifo_flush       (check_fifo_fifo_flush)
+*/
+);
+
+
 
 endmodule
 
