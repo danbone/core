@@ -98,6 +98,26 @@ generate
                 $display("ERROR: BURST_MIN must be set > 0");
                 $finish;
             end
+            
+            if (STALL_MIN < 0) begin
+                $display("ERROR: STALL_MIN < 0");
+                $finish;
+            end
+            
+            if (BURST_MIN < 0) begin
+                $display("ERROR: BURST_MIN < 0");
+                $finish;
+            end
+            
+            if (BURST_MAX < BURST_MIN) begin
+                $display("ERROR: BURST_MAX is less than BURST_MIN");
+                $finish;
+            end
+            if (STALL_MAX < STALL_MIN) begin
+                $display("ERROR: STALL_MAX is less than STALL_MIN");
+                $finish;
+            end
+            
             $display("INFO: Staller enabled - stall %d:%d burst %d:%d", 
                 STALL_MIN, STALL_MAX, BURST_MIN, BURST_MAX);
         end
