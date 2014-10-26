@@ -28,7 +28,7 @@ always @ (posedge clk, negedge rstn) begin
         mem_wb_data <= 32'b0;
     end
     else if (clk) begin
-        if (mem_wb_ack) begin
+        if (!mem_wb_rdy || mem_wb_ack) begin
             mem_wb_rdy <= ex_mem_rdy;
             mem_wb_data <= ex_mem_data;
         end
